@@ -1,0 +1,81 @@
+// Copyright 2018
+//
+// MIT License
+
+syntax = "proto3";
+
+option go_package = "github.com/openspock/net/proto";
+
+package proto;
+
+// Node represents a unique endpoint (host + port) on the network.
+//
+// A single host can have multiple nodes running; seemingly within
+// the same process. e.g. client and server of a p2p network.
+message Node {
+    uint64 id = 1;
+    string ipv4 = 2;
+    uint32 port = 3;
+}
+
+// Credentials will usually be a combination of username and a 
+// secret. It's upto the implementation to use plain text passwords
+// or hashes as secrets.
+message Credentials {
+    string username = 1;
+    string secret = 2;
+}
+
+// SessionType is an enumeration to indicate the type of the session
+// between 2 Node s.
+enum SessionType {
+    SINGLE_CALL = 0;
+    MULTI_CALL = 1;
+}
+
+// Timeout defines the time in millis for a session. It can be sent
+// as an argument to request a token after successfull authentication,
+// or alongwith a Token to indicate the type of session and timeout 
+// associated with the Token.
+message Timeout {
+    SessionType session_type = 1;
+    uint64 time_in_millis = 2;
+}  
+
+// Login message with be sent by one node to another, or by a client to 
+// a server. Upon login, if successfully authenticated, the client/ node
+// will receive a token which it will then have to share with the server/
+// other-node every time it sends/ receives messages.
+message Login {
+    Node node = 1;
+    Credentials credentials = 2;
+    Timeout timeout = 3;
+}
+
+// A Token is created everytime a Node is successfully authenticated. It contains
+// a token value.
+//
+// The type of session affiliated with a Token is available as a Timeout type
+// member in a token.
+message Token {
+    string token_val = 1;
+    Timeout session_timeout = 2;
+}
+
+/*
+message Read {
+
+}
+
+message Write {
+
+}
+
+message ReadStream {
+
+}
+
+message WriteStream {
+
+}
+*/
