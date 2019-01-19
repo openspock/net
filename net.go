@@ -40,6 +40,21 @@ func writeNode(key string, node Node) {
 	nodeTable.Unlock()
 }
 
+// Iter is a func type that receives a deep copy of a Node,
+// usually in an iterative fashion.
+type iter func(node Node)
+
+// OnEveryNode takes a func of type iter, which is called for
+// every node in the Node table.
+func OnEveryNode(i iter) {
+	nodeTable.RLock()
+	for _, v := range nodeTable.m {
+		n := Node{v.id, v.Host, v.Port}
+		i(n)
+	}
+	nodeTable.RUnlock()
+}
+
 func ipv4() (string, error) {
 	ifaces, err := net.Interfaces()
 	if err != nil {
@@ -102,19 +117,4 @@ func NewNode(host, port string) (*Node, error) {
 	}
 	writeNode(key, node)
 	return &node, nil
-}
-
-// Iter is a func type that receives a deep copy of a Node,
-// usually in an iterative fashion.
-type iter func(node Node)
-
-// OnEveryNode takes a func of type iter, which is called for
-// every node in the Node table.
-func OnEveryNode(i iter) {
-	nodeTable.RLock()
-	for _, v := range nodeTable.m {
-		n := Node{v.id, v.Host, v.Port}
-		i(n)
-	}
-	nodeTable.RUnlock()
 }
