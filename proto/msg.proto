@@ -13,7 +13,7 @@ package proto;
 // A single host can have multiple nodes running; seemingly within
 // the same process. e.g. client and server of a p2p network.
 message Node {
-    uint64 id = 1;
+    string id = 1;
     string ipv4 = 2;
     uint32 port = 3;
 }
