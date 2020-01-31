@@ -3,17 +3,21 @@
 package net
 
 import (
+	"bufio"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"net"
 	"sync"
 
+	proto "github.com/golang/protobuf/proto"
 	log "github.com/openspock/log"
 	netm "github.com/openspock/net/proto"
 	xid "github.com/rs/xid"
 )
 
-var _ = log.Debug
 var _ = netm.SessionType_MULTI_CALL
 
 var ip string
@@ -24,7 +28,7 @@ var nodeTable = struct {
 
 func init() {
 	ip, _ := ipv4()
-	log.SysInfo("Host ip: " + ip)
+	log.Info("Host ip: "+ip, log.AppLog, map[string]interface{}{})
 }
 
 func readNode(key string) (*Node, bool) {
@@ -89,6 +93,68 @@ func ipv4() (string, error) {
 	return "", errors.New("No network conn found")
 }
 
+// Listen starts a tcp listener on a port. The port is secured with TLSv1.2
+func Listen(port string) error {
+	log.Info(fmt.Sprintf("secure listener started on port: %s", port), log.AppLog, map[string]interface{}{})
+
+	cer, err := tls.LoadX509KeyPair("server.crt", "server.key")
+	if err != nil {
+		log.Error(err.Error(), log.AppLog, map[string]interface{}{})
+		return err
+	}
+
+	cfg := &tls.Config{
+		MinVersion:   tls.VersionTLS12,
+		Certificates: []tls.Certificate{cer},
+	}
+
+	listener, err := tls.Listen("tcp", fmt.Sprintf(":%s", port), cfg)
+	if err != nil {
+		log.Error(err.Error(), log.AppLog, map[string]interface{}{})
+		return err
+	}
+	defer listener.Close()
+
+	for {
+		if conn, err := listener.Accept(); err != nil {
+			log.Error(err.Error(), log.AppLog, map[string]interface{}{})
+		} else {
+			handleConnection(conn)
+		}
+	}
+}
+
+func handleConnection(conn net.Conn) {
+	// handle connection -
+	// receive proto message and choose handler based on type
+	defer conn.Close()
+	s := bufio.NewScanner(conn)
+	req := &netm.Request{}
+	if err := proto.Unmarshal(s.Bytes(), req); err != nil {
+		log.Error(err.Error(), log.AppLog, map[string]interface{}{})
+	}
+
+	switch req.GetType() {
+	case netm.Request_ASYNC:
+		response := handleAsync(req)
+		responseB, err := proto.Marshal(&response)
+		if err != nil {
+			log.Error(err.Error(), log.AppLog, map[string]interface{}{})
+		} else {
+			conn.Write(responseB)
+		}
+	}
+}
+
+//handler for async requests. netm.RequestType
+func handleAsync(req *netm.Request) netm.Response {
+	return netm.Response{Status: &netm.Status{Type: netm.Status_NO_ERROR, Message: "Success"}}
+}
+
+func handleLogin(netm.Login) {
+
+}
+
 // Node represents an active listening process on a host/ port.
 type Node struct {
 	id   string
@@ -96,11 +162,29 @@ type Node struct {
 	Port string
 }
 
-// Dial dials a connections to a Node. The connections are always secure.
-//
+// Dial dials a secure connection to a Node and returns it.
 // The connection, if established will be secured with a TLSv1.2 cert.
+//
+// The caller of this method should ensure that the connection is closed.
 func (node *Node) Dial() (net.Conn, error) {
-	return nil, nil
+	log.Info(fmt.Sprintf("dial connection to node %s:%s", node.Host, node.Port), log.AppLog, map[string]interface{}{})
+
+	cert, err := ioutil.ReadFile("server.crt")
+	if err != nil {
+		return nil, err
+	}
+	certPool := x509.NewCertPool()
+	certPool.AppendCertsFromPEM(cert)
+
+	conf := &tls.Config{
+		MinVersion: tls.VersionTLS12,
+		RootCAs:    certPool,
+	}
+	conn, err := tls.Dial("tcp", fmt.Sprintf("%s:%s", node.Host, node.Port), conf)
+	if err != nil {
+		return nil, err
+	}
+	return conn, nil
 }
 
 // NewNode creates a new Node if there isn't one existing already,
